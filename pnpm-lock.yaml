@@ -108,6 +108,9 @@ importers:
       '@react-native/babel-preset':
         specifier: 0.83.0
         version: 0.83.0(@babel/core@7.28.6)
+      '@react-native/codegen':
+        specifier: 0.83.0
+        version: 0.83.0(@babel/core@7.28.6)
       '@react-native/gradle-plugin':
         specifier: 0.83.0
         version: 0.83.0
@@ -6632,7 +6635,9 @@ snapshots:
       metro-runtime: 0.83.3
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.83.0': {}
 
