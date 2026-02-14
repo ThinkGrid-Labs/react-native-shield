@@ -16,7 +16,10 @@ class ShieldModule(reactContext: ReactApplicationContext) :
     try {
       val pinnerBuilder = okhttp3.CertificatePinner.Builder()
       for (i in 0 until publicKeyHashes.size()) {
-        pinnerBuilder.add(domain, publicKeyHashes.getString(i))
+        val hash = publicKeyHashes.getString(i)
+        if (hash != null) {
+          pinnerBuilder.add(domain, hash)
+        }
       }
       val certificatePinner = pinnerBuilder.build()
 
@@ -29,6 +32,8 @@ class ShieldModule(reactContext: ReactApplicationContext) :
     } catch (e: Exception) {
       promise.reject("SSL_PINNING_ERROR", e)
     }
+  }
+
   override fun preventScreenshot(prevent: Boolean, promise: com.facebook.react.bridge.Promise) {
     val activity = currentActivity
     if (activity == null) {
@@ -130,6 +135,6 @@ class ShieldModule(reactContext: ReactApplicationContext) :
   }
 
   companion object {
-    const val NAME = NativeShieldSpec.NAME
+    const val NAME = "Shield"
   }
 }
