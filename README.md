@@ -17,11 +17,11 @@
 ## Installation
 
 ```sh
-npm install @thinkgrid-labs/react-native-shield
+npm install @think-grid-labs/react-native-shield
 # or
-yarn add @thinkgrid-labs/react-native-shield
+yarn add @think-grid-labs/react-native-shield
 # or
-pnpm add @thinkgrid-labs/react-native-shield
+pnpm add @think-grid-labs/react-native-shield
 ```
 
 ### iOS Setup
@@ -37,7 +37,7 @@ cd ios && pod install
 Import the library in your component:
 
 ```tsx
-import { isRooted, addSSLPinning, preventScreenshot } from '@thinkgrid-labs/react-native-shield';
+import { isRooted, addSSLPinning, preventScreenshot } from '@think-grid-labs/react-native-shield';
 ```
 
 ### 1. Device Integrity (Root/Jailbreak Detection)
@@ -116,7 +116,7 @@ preventScreenshot(false);
 Store sensitive data (like auth tokens, API keys) securely.
 
 ```tsx
-import { setSecureString, getSecureString, removeSecureString } from '@thinkgrid-labs/react-native-shield';
+import { setSecureString, getSecureString, removeSecureString } from '@think-grid-labs/react-native-shield';
 
 const manageSecrets = async () => {
     // 1. Save a secret

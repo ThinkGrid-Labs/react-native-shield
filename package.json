@@ -1,5 +1,5 @@
 {
-  "name": "@thinkgrid-labs/react-native-shield",
+  "name": "@think-grid-labs/react-native-shield",
   "version": "0.1.0",
   "description": "All-in-one security suite",
   "main": "./lib/module/index.js",
