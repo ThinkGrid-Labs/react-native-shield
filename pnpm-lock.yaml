@@ -108,6 +108,9 @@ importers:
       '@react-native/babel-preset':
         specifier: 0.83.0
         version: 0.83.0(@babel/core@7.28.6)
+      '@react-native/gradle-plugin':
+        specifier: 0.83.0
+        version: 0.83.0
       '@react-native/metro-config':
         specifier: 0.83.0
         version: 0.83.0(@babel/core@7.28.6)
