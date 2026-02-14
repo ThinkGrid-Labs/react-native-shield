@@ -1,6 +1,6 @@
 {
-  "name": "@akosidencio/react-native-shield",
-  "version": "0.2.0",
+  "name": "@thinkgrid-labs/react-native-shield",
+  "version": "0.1.0",
   "description": "All-in-one security suite",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
@@ -47,14 +47,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/akosidencio/react-native-shield.git.git"
+    "url": "git+https://github.com/ThinkGrid-Labs/react-native-shield.git"
   },
   "author": "AkosiDencio <dtpaler@gmail.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/akosidencio/react-native-shield.git/issues"
+    "url": "https://github.com/ThinkGrid-Labs/react-native-shield/issues"
   },
-  "homepage": "https://github.com/akosidencio/react-native-shield.git#readme",
+  "homepage": "https://github.com/ThinkGrid-Labs/react-native-shield#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"
