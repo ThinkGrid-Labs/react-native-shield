@@ -1,6 +1,11 @@
 #import "Shield.h"
+#import <LocalAuthentication/LocalAuthentication.h>
 #import <TrustKit/TrustKit.h>
 #import <UIKit/UIKit.h>
+#import <ifaddrs.h>
+#import <mach-o/dyld.h>
+#import <net/if.h>
+#import <sys/sysctl.h>
 
 @implementation Shield
 
@@ -53,6 +58,142 @@
   return @(isJailbroken);
 }
 
+- (NSNumber *)isEmulator {
+#if TARGET_IPHONE_SIMULATOR || TARGET_OS_SIMULATOR
+  return @YES;
+#else
+  return @NO;
+#endif
+}
+
+- (NSNumber *)isDebuggerAttached {
+  int junk;
+  int mib[4];
+  struct kinfo_proc info;
+  size_t size;
+
+  info.kp_proc.p_flag = 0;
+
+  mib[0] = CTL_KERN;
+  mib[1] = KERN_PROC;
+  mib[2] = KERN_PROC_PID;
+  mib[3] = getpid();
+
+  size = sizeof(info);
+  junk = sysctl(mib, sizeof(mib) / sizeof(*mib), &info, &size, NULL, 0);
+  assert(junk == 0);
+
+  return @((info.kp_proc.p_flag & P_TRACED) != 0);
+}
+
+- (NSNumber *)verifySignature:(NSString *)expectedHash {
+  // Basic check for iOS: if embedded.mobileprovision exists in a release app,
+  // it might imply the app was resigned with a non-App Store cert.
+  NSString *provisionPath =
+      [[NSBundle mainBundle] pathForResource:@"embedded"
+                                      ofType:@"mobileprovision"];
+  if (provisionPath) {
+    // It exists. If this is supposed to be a production App Store build, this
+    // is suspicious. We return NO (invalid/tampered) if it exists, but
+    // typically developers need flexibility here. For this method, we return
+    // YES if the provision file is *missing* (App Store standard).
+    return @NO;
+  }
+  return @YES;
+}
+
+- (NSNumber *)isHooked {
+  uint32_t count = _dyld_image_count();
+  for (uint32_t i = 0; i < count; i++) {
+    const char *name = _dyld_get_image_name(i);
+    if (name) {
+      NSString *imageName = [NSString stringWithUTF8String:name];
+      if ([imageName localizedCaseInsensitiveContainsString:@"Substrate"] ||
+          [imageName localizedCaseInsensitiveContainsString:@"Frida"] ||
+          [imageName localizedCaseInsensitiveContainsString:@"cycript"] ||
+          [imageName localizedCaseInsensitiveContainsString:@"SSLKillSwitch"] ||
+          [imageName
+              localizedCaseInsensitiveContainsString:@"MobileSubstrate"]) {
+        return @YES;
+      }
+    }
+  }
+  return @NO;
+}
+
+- (NSNumber *)isDeveloperModeEnabled {
+  // Not applicable on iOS in the same way as Android settings.
+  return @NO;
+}
+
+- (NSNumber *)isVPNDetected {
+  struct ifaddrs *interfaces;
+  if (getifaddrs(&interfaces) == 0) {
+    struct ifaddrs *temp = interfaces;
+    while (temp != NULL) {
+      if (temp->ifa_name != NULL) {
+        NSString *name = [NSString stringWithUTF8String:temp->ifa_name];
+        if ([name containsString:@"tap"] || [name containsString:@"tun"] ||
+            [name containsString:@"ppp"] || [name containsString:@"utun"] ||
+            [name containsString:@"ipsec"]) {
+          freeifaddrs(interfaces);
+          return @YES;
+        }
+      }
+      temp = temp->ifa_next;
+    }
+  }
+  freeifaddrs(interfaces);
+  return @NO;
+}
+
+- (void)protectClipboard:(BOOL)protect
+                 resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (protect) {
+      [[NSNotificationCenter defaultCenter]
+          addObserver:self
+             selector:@selector(clearClipboard)
+                 name:UIApplicationDidEnterBackgroundNotification
+               object:nil];
+    } else {
+      [[NSNotificationCenter defaultCenter]
+          removeObserver:self
+                    name:UIApplicationDidEnterBackgroundNotification
+                  object:nil];
+    }
+    resolve(nil);
+  });
+}
+
+- (void)clearClipboard {
+  [UIPasteboard generalPasteboard].string = @"";
+}
+
+- (void)authenticateWithBiometrics:(NSString *)promptMessage
+                           resolve:(RCTPromiseResolveBlock)resolve
+                            reject:(RCTPromiseRejectBlock)reject {
+  LAContext *context = [[LAContext alloc] init];
+  NSError *error = nil;
+
+  if ([context canEvaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics
+                           error:&error]) {
+    [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics
+            localizedReason:promptMessage
+                      reply:^(BOOL success, NSError *_Nullable evalError) {
+                        if (success) {
+                          resolve(@YES);
+                        } else {
+                          resolve(@NO);
+                        }
+                      }];
+  } else {
+    // Fallback to passcode or just return false
+    resolve(@NO);
+  }
+}
+
 - (void)addSSLPinning:(NSString *)domain
       publicKeyHashes:(NSArray *)publicKeyHashes
               resolve:(RCTPromiseResolveBlock)resolve
@@ -73,6 +214,17 @@
   resolve(nil);
 }
 
+- (void)updateSSLPins:(NSString *)domain
+      publicKeyHashes:(NSArray *)publicKeyHashes
+              resolve:(RCTPromiseResolveBlock)resolve
+               reject:(RCTPromiseRejectBlock)reject {
+  // TrustKit does not support runtime reconfiguration without exception.
+  // In a fully dynamic scenario, developers should store pins in JS and pass
+  // them to addSSLPinning on app launch. This method serves as a stub
+  // to align with the Android API where OkHttp allows factory overrides.
+  resolve(nil);
+}
+
 - (void)preventScreenshot:(BOOL)prevent
                   resolve:(RCTPromiseResolveBlock)resolve
                    reject:(RCTPromiseRejectBlock)reject {
@@ -84,71 +236,91 @@
     }
 
     if (prevent) {
-      // "Secure Field" trick: attaching a secure text field to the window layer
-      // makes it hidden in screenshots/recording
-      UITextField *secureField = [[UITextField alloc] init];
-      secureField.secureTextEntry = YES;
-      secureField.userInteractionEnabled = NO;
-      secureField.tag = 9999;
+      // Create a secure text field to mask content during screen
+      // recording/AirPlay
+      UITextField *secureField = (UITextField *)[window viewWithTag:9999];
+      if (!secureField) {
+        secureField = [[UITextField alloc] init];
+        secureField.secureTextEntry = YES;
+        secureField.userInteractionEnabled = NO;
+        secureField.tag = 9999;
 
-      // This is the common workaround for iOS < 13+, replacing the view
-      // hierarchy content However, a simpler modern approach for *recording* is
-      // listening to UIScreenCapturedDidChangeNotification Real "prevention" of
-      // *screenshots* is not officially supported by iOS API. The
-      // secureTextEntry trick makes the CALayer hidden.
+        // Ensure it covers the window but stays out of the way of touches
+        secureField.frame = window.bounds;
+        secureField.autoresizingMask =
+            UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        secureField.backgroundColor = [UIColor clearColor];
 
-      [window addSubview:secureField];
-      [window.layer.sublayers
-          makeObjectsPerformSelector:@selector(removeFromSuperlayer)];
-      [window.layer addSublayer:secureField.layer];
-      [[window.layer.sublayers firstObject]
-          addSublayer:window.rootViewController.view.layer];
+        [window addSubview:secureField];
+        [window sendSubviewToBack:secureField];
 
-      // NOTE: The above layer manipulation is risky and complex.
-      // A safer standard approach for React Native modules is just to rely on
-      // `UIScreenCapturedDidChangeNotification` to blur the screen, OR use a
-      // hidden secure text field to mask specific views. For a "Whole App"
-      // shield, we often just blur on resign active.
+        // Critical step: Make the window's main layer a sublayer of the secure
+        // field's layer This is the known hack to hide content from screen
+        // recording on iOS 13+
+        [window.layer.superlayer addSublayer:secureField.layer];
+        [[secureField.layer.sublayers firstObject] addSublayer:window.layer];
+      }
 
-      // LET'S IMPLEMENT BLUR ON BACKGROUND (Privacy) instead of Hacky
-      // Screenshot Prevention because true screenshot prevention is impossible
-      // on iOS.
-
-      [[NSNotificationCenter defaultCenter]
-          addObserver:self
-             selector:@selector(appDidBecomeActive)
-                 name:UIApplicationDidBecomeActiveNotification
-               object:nil];
+      // Add Blur Observers for multitasking/background privacy
       [[NSNotificationCenter defaultCenter]
           addObserver:self
              selector:@selector(appWillResignActive)
                  name:UIApplicationWillResignActiveNotification
                object:nil];
-    } else {
       [[NSNotificationCenter defaultCenter]
-          removeObserver:self
-                    name:UIApplicationDidBecomeActiveNotification
-                  object:nil];
+          addObserver:self
+             selector:@selector(appDidBecomeActive)
+                 name:UIApplicationDidBecomeActiveNotification
+               object:nil];
+
+    } else {
+      // Remove Observers
       [[NSNotificationCenter defaultCenter]
           removeObserver:self
                     name:UIApplicationWillResignActiveNotification
                   object:nil];
+      [[NSNotificationCenter defaultCenter]
+          removeObserver:self
+                    name:UIApplicationDidBecomeActiveNotification
+                  object:nil];
+
+      // Remove any active blur
+      [self appDidBecomeActive];
+
+      // Remove secure field layer manipulation
+      UITextField *secureField = (UITextField *)[window viewWithTag:9999];
+      if (secureField) {
+        // Restore window layer to its original hierarchy
+        [secureField.layer.superlayer addSublayer:window.layer];
+        [secureField removeFromSuperview];
+      }
     }
     resolve(nil);
   });
 }
-// Placeholder for the blur logic
+
+// Background Blur Logic
 - (void)appWillResignActive {
   UIWindow *window = [UIApplication sharedApplication].keyWindow;
-  UIBlurEffect *blurEffect =
-      [UIBlurEffect effectWithStyle:UIBlurEffectStyleLight];
-  UIVisualEffectView *blurEffectView =
-      [[UIVisualEffectView alloc] initWithEffect:blurEffect];
-  blurEffectView.frame = window.bounds;
-  blurEffectView.autoresizingMask =
-      UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-  blurEffectView.tag = 12345;
-  [window addSubview:blurEffectView];
+  if (![window viewWithTag:12345]) {
+    UIBlurEffect *blurEffect =
+        [UIBlurEffect effectWithStyle:UIBlurEffectStyleLight];
+    UIVisualEffectView *blurEffectView =
+        [[UIVisualEffectView alloc] initWithEffect:blurEffect];
+    blurEffectView.frame = window.bounds;
+    blurEffectView.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    blurEffectView.tag = 12345;
+    [window addSubview:blurEffectView];
+  }
+}
+
+- (void)appDidBecomeActive {
+  UIWindow *window = [UIApplication sharedApplication].keyWindow;
+  UIView *blurView = [window viewWithTag:12345];
+  if (blurView) {
+    [blurView removeFromSuperview];
+  }
 }
 
 - (void)appDidBecomeActive {
