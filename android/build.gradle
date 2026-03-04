@@ -66,4 +66,5 @@ dependencies {
   implementation "com.facebook.react:react-android"
   implementation "com.squareup.okhttp3:okhttp:4.9.2"
   implementation "androidx.security:security-crypto:1.1.0-alpha06"
+  implementation "androidx.biometric:biometric:1.2.0-alpha05"
 }
