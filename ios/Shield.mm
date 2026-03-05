@@ -228,11 +228,31 @@
          nil);
 }
 
+// Returns the active key window in a multi-scene compatible way (iOS 13+).
+- (UIWindow *)activeKeyWindow {
+  if (@available(iOS 13.0, *)) {
+    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+      if (scene.activationState == UISceneActivationStateForegroundActive &&
+          [scene isKindOfClass:[UIWindowScene class]]) {
+        UIWindowScene *windowScene = (UIWindowScene *)scene;
+        for (UIWindow *w in windowScene.windows) {
+          if (w.isKeyWindow) return w;
+        }
+        return windowScene.windows.firstObject;
+      }
+    }
+  }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  return [UIApplication sharedApplication].keyWindow;
+#pragma clang diagnostic pop
+}
+
 - (void)preventScreenshot:(BOOL)prevent
                   resolve:(RCTPromiseResolveBlock)resolve
                    reject:(RCTPromiseRejectBlock)reject {
   dispatch_async(dispatch_get_main_queue(), ^{
-    UIWindow *window = [UIApplication sharedApplication].keyWindow;
+    UIWindow *window = [self activeKeyWindow];
     if (!window) {
       reject(@"NO_WINDOW", @"Key window is null", nil);
       return;
@@ -304,7 +324,7 @@
 
 // Background Blur Logic
 - (void)appWillResignActive {
-  UIWindow *window = [UIApplication sharedApplication].keyWindow;
+  UIWindow *window = [self activeKeyWindow];
   if (![window viewWithTag:12345]) {
     UIBlurEffect *blurEffect =
         [UIBlurEffect effectWithStyle:UIBlurEffectStyleLight];
@@ -319,7 +339,7 @@
 }
 
 - (void)appDidBecomeActive {
-  UIWindow *window = [UIApplication sharedApplication].keyWindow;
+  UIWindow *window = [self activeKeyWindow];
   UIView *blurView = [window viewWithTag:12345];
   if (blurView) {
     [blurView removeFromSuperview];
